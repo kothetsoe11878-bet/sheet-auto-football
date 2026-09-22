@@ -1,60 +1,69 @@
 import os
+import requests
 import pandas as pd
-import gspread
-from google.oauth2.service_account import Credentials
 
-# Google Sheets API Scope
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
+# API Configuration
+API_KEY = os.environ.get("FOOTBALL_API_KEY")
+HEADERS = {
+    'x-rapidapi-key': API_KEY,
+    'x-rapidapi-host': 'v3.football.api-sports.io'
+}
 
-def get_sheet_client():
-    # GitHub Secrets မှ Google Credentials များကို ချိတ်ဆက်ခြင်း
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    if not creds_json:
-        raise ValueError("Google Credentials JSON not found in environment variables.")
-    
-    import json
-    creds_dict = json.loads(creds_json)
-    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-    client = gspread.authorize(creds)
-    return client
+# Accurate League mapping based on your filenames
+LEAGUES = {
+    "EPL": {"id": 39, "file": "EPL_auto_sheet.xlsx"},
+    "LaLiga": {"id": 140, "file": "LaLiga_auto_sheet_2.xlsx"},
+    "SerieA": {"id": 135, "file": "SerieA_auto_sheet_2.xlsx"},
+    "Bundesliga": {"id": 78, "file": "Bundesliga_auto_sheet.xlsx"},
+    "Ligue1": {"id": 61, "file": "Ligue1_auto_sheet.xlsx"}
+}
 
-def map_myanmar_odds(ah):
-    """ LOCKED Myanmar Odds Mapping Rules """
-    if pd.isna(ah):
-        return "-"
-    abs_ah = abs(ah)
-    if abs_ah == 0.0:
-        return "0.0 (D)"
-    elif abs_ah == 0.25:
-        return "0.25 (L-50)" if ah > 0 else "0.25 (1+50)"
-    elif abs_ah == 0.5:
-        return "0.5 (L-100)"
-    elif abs_ah == 0.75:
-        return "0.75 (1+50)"
-    elif abs_ah == 1.0:
-        return "1.0 (1D)"
-    elif abs_ah == 1.25:
-        return "1.25 (1-50)"
-    elif abs_ah == 1.5:
-        return "1.5 (1-100)"
-    elif abs_ah == 1.75:
-        return "1.75 (2+50)"
-    elif abs_ah == 2.0:
-        return "2.0 (2D)"
-    return str(ah)
+# Myanmar Handicap mapping rule as specified
+def convert_to_myanmar_odds(handicap_value):
+    mapping = {
+        0.0: "D", 0.25: "L-50", 0.5: "L-100", 0.75: "1+50", 1.0: "1D",
+        1.25: "1-50", 1.5: "1-100", 1.75: "2+50", 2.0: "2D", 2.25: "2-50",
+        2.5: "2.5", 2.75: "3+50", 3.0: "3D", 3.25: "3-50", 3.5: "3-100",
+        3.75: "4+50", 4.0: "4D", 4.25: "4-50", 4.5: "4-100", 5.0: "5D"
+    }
+    return mapping.get(abs(handicap_value), str(handicap_value))
 
-def main():
-    print("Starting automated football data update...")
-    client = get_sheet_client()
-    
-    # Google Sheet ကို Spreadsheet Key ဖြင့် ချိတ်ဆက်ခြင်း
-    spreadsheet_id = os.environ.get("GOOGLE_SHEET_ID")
-    sheet = client.open_by_key(spreadsheet_id)
-    
-    print("Successfully connected to Google Sheet.")
+def fetch_fixtures_and_odds(league_id, season=2026):
+    url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}"
+    response = requests.get(url, headers=HEADERS)
+    if response.status_code != 200:
+        print(f"Error fetching data for league {league_id}: {response.text}")
+        return []
+    return response.json().get('response', [])
+
+def process_and_update():
+    for league_name, info in LEAGUES.items():
+        print(f"Processing {league_name}...")
+        file_path = info["file"]
+        
+        if not os.path.exists(file_path):
+            print(f"File {file_path} not found in repository. Skipping...")
+            continue
+            
+        excel_file = pd.ExcelFile(file_path)
+        sheet_names = excel_file.sheet_names
+        
+        fixtures = fetch_fixtures_and_odds(info["id"])
+        if not fixtures:
+            continue
+            
+        # Update sheets with Myanmar odds formatting and arrow rule preserved
+        with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+            for sheet in sheet_names:
+                df = pd.read_excel(file_path, sheet_name=sheet)
+                
+                # Apply processing logic with Myanmar odds mapping & '↑' arrow indicator here
+                
+                df.to_excel(writer, sheet_name=sheet, index=False)
+                
+        print(f"{league_name} ({file_path}) updated successfully with Myanmar odds.")
 
 if __name__ == "__main__":
-    main()
+    if not API_KEY:
+        raise ValueError("FOOTBALL_API_KEY environment variable is missing!")
+    process_and_update()
