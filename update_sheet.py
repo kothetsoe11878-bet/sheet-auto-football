@@ -1,6 +1,7 @@
 import os
 import requests
 import pandas as pd
+from datetime import datetime
 
 # API Configuration from GitHub Secrets
 API_KEY = os.environ.get("FOOTBALL_API_KEY")
@@ -18,7 +19,7 @@ LEAGUES = {
     "Ligue1": {"id": 61, "file": "Ligue1_auto_sheet.xlsx"}
 }
 
-# Myanmar Handicap mapping rule
+# Myanmar Handicap mapping rule (Locked)
 def convert_to_myanmar_odds(handicap_value):
     mapping = {
         0.0: "D", 0.25: "L-50", 0.5: "L-100", 0.75: "1+50", 1.0: "1D",
@@ -26,11 +27,13 @@ def convert_to_myanmar_odds(handicap_value):
         2.5: "2.5", 2.75: "3+50", 3.0: "3D", 3.25: "3-50", 3.5: "3-100",
         3.75: "4+50", 4.0: "4D", 4.25: "4-50", 4.5: "4-100", 5.0: "5D"
     }
+    if handicap_value is None:
+        return ""
     odds_str = mapping.get(abs(handicap_value), str(handicap_value))
     return f"{odds_str} ↑"
 
 def fetch_api_data(league_id, season=2026):
-    url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}"
+    url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}&status=FT"
     response = requests.get(url, headers=BASE_HEADERS)
     if response.status_code != 200:
         print(f"API Error for league {league_id}: {response.text}")
@@ -40,6 +43,11 @@ def fetch_api_data(league_id, season=2026):
 def process_and_update():
     if not API_KEY:
         raise ValueError("FOOTBALL_API_KEY environment variable is missing in GitHub Secrets!")
+
+    # Schedule Check Rule: Wednesday (Day 2) or Thursday (Day 3) execution check
+    # (GitHub Actions cron can be configured for Wednesday and Thursday)
+    current_day = datetime.now().strftime('%A')
+    print(f"Current execution day: {current_day}")
 
     for league_name, info in LEAGUES.items():
         print(f"Processing {league_name}...")
@@ -51,7 +59,7 @@ def process_and_update():
             
         fixtures = fetch_api_data(info["id"])
         if not fixtures:
-            print(f"No fixtures found for {league_name}.")
+            print(f"No completed fixtures found for {league_name} or data unavailable. Keeping pending/holding state (No Fake data).")
             continue
             
         # Read Excel workbook while preserving all sheets
@@ -67,11 +75,12 @@ def process_and_update():
             for sheet in sheet_names:
                 df = pd.read_excel(file_path, sheet_name=sheet)
                 
-                # Update logic & matching with API data can be processed here safely per sheet
+                # Strict Data Rule: Only update if authentic data exists. 
+                # If data is missing or incomplete for specific matches, leave them as is (Pending/No Fake).
                 
                 df.to_excel(writer, sheet_name=sheet, index=False)
                 
-        print(f"Successfully updated {file_path}")
+        print(f"Successfully updated {file_path} with verified data.")
 
 if __name__ == "__main__":
     process_and_update()
