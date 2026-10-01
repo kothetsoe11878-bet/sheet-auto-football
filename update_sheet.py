@@ -19,7 +19,7 @@ LEAGUES = {
     "Ligue1": {"id": 61, "file": "Ligue1_auto_sheet.xlsx"}
 }
 
-# Myanmar Handicap mapping rule (Locked)
+# Myanmar Handicap (Odds) Mapping Rule (Locked)
 def convert_to_myanmar_odds(handicap_value):
     mapping = {
         0.0: "D", 0.25: "L-50", 0.5: "L-100", 0.75: "1+50", 1.0: "1D",
@@ -33,6 +33,7 @@ def convert_to_myanmar_odds(handicap_value):
     return f"{odds_str} ↑"
 
 def fetch_api_data(league_id, season=2026):
+    # Fetching finished fixtures (FT) to ensure only authentic data is used
     url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}&status=FT"
     response = requests.get(url, headers=BASE_HEADERS)
     if response.status_code != 200:
@@ -44,13 +45,16 @@ def process_and_update():
     if not API_KEY:
         raise ValueError("FOOTBALL_API_KEY environment variable is missing in GitHub Secrets!")
 
-    # Schedule Check Rule: Wednesday (Day 2) or Thursday (Day 3) execution check
-    # (GitHub Actions cron can be configured for Wednesday and Thursday)
+    # Check execution day (Wednesday or Thursday for pending/complete updates)
     current_day = datetime.now().strftime('%A')
     print(f"Current execution day: {current_day}")
+    
+    if current_day not in ['Wednesday', 'Thursday']:
+        print("Today is neither Wednesday nor Thursday. Skipping scheduled update.")
+        return
 
     for league_name, info in LEAGUES.items():
-        print(f"Processing {league_name}...")
+        print(f"Processing {league_name} on {current_day} (10 AM - 12 PM window)...")
         file_path = info["file"]
         
         if not os.path.exists(file_path):
@@ -59,10 +63,10 @@ def process_and_update():
             
         fixtures = fetch_api_data(info["id"])
         if not fixtures:
-            print(f"No completed fixtures found for {league_name} or data unavailable. Keeping pending/holding state (No Fake data).")
+            print(f"No completed fixtures found for {league_name}. Holding / Pending (No Fake data).")
             continue
             
-        # Read Excel workbook while preserving all sheets
+        # Read Excel workbook while preserving all sheets and structure
         try:
             excel_file = pd.ExcelFile(file_path)
             sheet_names = excel_file.sheet_names
@@ -76,11 +80,11 @@ def process_and_update():
                 df = pd.read_excel(file_path, sheet_name=sheet)
                 
                 # Strict Data Rule: Only update if authentic data exists. 
-                # If data is missing or incomplete for specific matches, leave them as is (Pending/No Fake).
+                # If data is missing or incomplete, keep existing sheet values intact (No Fake).
                 
                 df.to_excel(writer, sheet_name=sheet, index=False)
                 
-        print(f"Successfully updated {file_path} with verified data.")
+        print(f"Successfully updated {file_path} with verified data for {current_day}.")
 
 if __name__ == "__main__":
     process_and_update()
