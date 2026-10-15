@@ -19,18 +19,8 @@ LEAGUES = {
     "Ligue1": {"id": 61, "file": "Ligue1_auto_sheet.xlsx"}
 }
 
-# Myanmar Handicap (Odds) Mapping Rule (Locked)
-def convert_to_myanmar_odds(handicap_value):
-    mapping = {
-        0.0: "D", 0.25: "L-50", 0.5: "L-100", 0.75: "1+50", 1.0: "1D",
-        1.25: "1-50", 1.5: "1-100", 1.75: "2+50", 2.0: "2D", 2.25: "2-50",
-        2.5: "2.5", 2.75: "3+50", 3.0: "3D", 3.25: "3-50", 3.5: "3-100",
-        3.75: "4+50", 4.0: "4D", 4.25: "4-50", 4.5: "4-100", 5.0: "5D"
-    }
-    if handicap_value is None:
-        return ""
-    odds_str = mapping.get(abs(handicap_value), str(handicap_value))
-    return f"{odds_str} ↑"
+# Team name mapping (API team names to Excel sheet/row team names if needed)
+# You can add mappings here if API names differ slightly from Excel names.
 
 def fetch_api_data(league_id, season=2026):
     # Fetching finished fixtures (FT) to ensure only authentic data is used
@@ -66,6 +56,23 @@ def process_and_update():
             print(f"No completed fixtures found for {league_name}. Holding / Pending (No Fake data).")
             continue
             
+        # Parse API fixtures into a lookup dictionary
+        # Key: (match_date_str, home_team_lower, away_team_lower) -> Value: "home_goals-away_goals"
+        finished_matches = {}
+        for fix in fixtures:
+            match_date = fix['fixture']['date'][:10] # YYYY-MM-DD
+            home = fix['teams']['home']['name'].strip().lower()
+            away = fix['teams']['away']['name'].strip().lower()
+            h_goals = fix['goals']['home']
+            a_goals = fix['goals']['away']
+            
+            if h_goals is not None and a_goals is not None:
+                finished_matches[(match_date, home, away)] = f"{h_goals}-{a_goals}"
+
+        if not finished_matches:
+            print(f"No verified FT scores available for {league_name}.")
+            continue
+
         # Read Excel workbook while preserving all sheets and structure
         try:
             excel_file = pd.ExcelFile(file_path)
@@ -74,17 +81,52 @@ def process_and_update():
             print(f"Error reading {file_path}: {e}")
             continue
 
+        updated_any = False
+
         # Open ExcelWriter to update sheets without losing structure or formatting
         with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
             for sheet in sheet_names:
                 df = pd.read_excel(file_path, sheet_name=sheet)
                 
-                # Strict Data Rule: Only update if authentic data exists. 
-                # If data is missing or incomplete, keep existing sheet values intact (No Fake).
+                # Sheet name represents the team (e.g., 'Arsenal', 'Aston Villa')
+                sheet_team = sheet.strip().lower()
                 
+                # Iterate through rows to match Date, Team/Opponent and update Score (Column I / index 8)
+                for idx, row in df.iterrows():
+                    date_val = row.iloc[1] # Column B (Date)
+                    team_val = str(row.iloc[2]).strip().lower() # Column C (Team)
+                    opp_val = str(row.iloc[4]).strip().lower()  # Column E (Opponent)
+                    
+                    if pd.isna(date_val):
+                        continue
+                    
+                    match_date_str = str(date_val)[:10]
+                    
+                    # Determine Home/Away status or check both directions
+                    score_found = None
+                    # Try matching as Home
+                    key_home = (match_date_str, sheet_team, opp_val)
+                    # Try matching as Away
+                    key_away = (match_date_str, opp_val, sheet_team)
+                    
+                    if key_home in finished_matches:
+                        score_found = finished_matches[key_home]
+                    elif key_away in finished_matches:
+                        score_found = finished_matches[key_away]
+                        
+                    if score_found:
+                        # Update Score column (Column I corresponds to index 8)
+                        current_score = str(row.iloc[8]) if pd.notna(row.iloc[8]) else ""
+                        if current_score != score_found:
+                            df.iat[idx, 8] = score_found
+                            updated_any = True
+
                 df.to_excel(writer, sheet_name=sheet, index=False)
                 
-        print(f"Successfully updated {file_path} with verified data for {current_day}.")
+        if updated_any:
+            print(f"Successfully updated {file_path} with verified match scores for {current_day}.")
+        else:
+            print(f"No new matching scores to update for {file_path}.")
 
 if __name__ == "__main__":
     process_and_update()
