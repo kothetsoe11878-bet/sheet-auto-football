@@ -19,11 +19,8 @@ LEAGUES = {
     "Ligue1": {"id": 61, "file": "Ligue1_auto_sheet.xlsx"}
 }
 
-# Team name mapping (API team names to Excel sheet/row team names if needed)
-# You can add mappings here if API names differ slightly from Excel names.
-
 def fetch_api_data(league_id, season=2026):
-    # Fetching finished fixtures (FT) to ensure only authentic data is used
+    # Fetching finished fixtures (FT) to ensure only authentic data is used for 2026/2027 season
     url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}&status=FT"
     response = requests.get(url, headers=BASE_HEADERS)
     if response.status_code != 200:
@@ -35,16 +32,16 @@ def process_and_update():
     if not API_KEY:
         raise ValueError("FOOTBALL_API_KEY environment variable is missing in GitHub Secrets!")
 
-    # Check execution day (Wednesday or Thursday for pending/complete updates)
+    # Check execution day (Tuesday, Wednesday, Thursday allowed; Tuesday is optimal for weekend results)
     current_day = datetime.now().strftime('%A')
     print(f"Current execution day: {current_day}")
     
-    if current_day not in ['Wednesday', 'Thursday']:
-        print("Today is neither Wednesday nor Thursday. Skipping scheduled update.")
+    if current_day not in ['Tuesday', 'Wednesday', 'Thursday']:
+        print("Today is not an update day (Tuesday/Wednesday/Thursday). Skipping scheduled update.")
         return
 
     for league_name, info in LEAGUES.items():
-        print(f"Processing {league_name} on {current_day} (10 AM - 12 PM window)...")
+        print(f"Processing {league_name} on {current_day}...")
         file_path = info["file"]
         
         if not os.path.exists(file_path):
@@ -57,7 +54,6 @@ def process_and_update():
             continue
             
         # Parse API fixtures into a lookup dictionary
-        # Key: (match_date_str, home_team_lower, away_team_lower) -> Value: "home_goals-away_goals"
         finished_matches = {}
         for fix in fixtures:
             match_date = fix['fixture']['date'][:10] # YYYY-MM-DD
@@ -88,13 +84,11 @@ def process_and_update():
             for sheet in sheet_names:
                 df = pd.read_excel(file_path, sheet_name=sheet)
                 
-                # Sheet name represents the team (e.g., 'Arsenal', 'Aston Villa')
                 sheet_team = sheet.strip().lower()
                 
-                # Iterate through rows to match Date, Team/Opponent and update Score (Column I / index 8)
+                # Iterate through rows to match Date, Opponent and update Score (Column I / index 8)
                 for idx, row in df.iterrows():
                     date_val = row.iloc[1] # Column B (Date)
-                    team_val = str(row.iloc[2]).strip().lower() # Column C (Team)
                     opp_val = str(row.iloc[4]).strip().lower()  # Column E (Opponent)
                     
                     if pd.isna(date_val):
@@ -102,11 +96,8 @@ def process_and_update():
                     
                     match_date_str = str(date_val)[:10]
                     
-                    # Determine Home/Away status or check both directions
                     score_found = None
-                    # Try matching as Home
                     key_home = (match_date_str, sheet_team, opp_val)
-                    # Try matching as Away
                     key_away = (match_date_str, opp_val, sheet_team)
                     
                     if key_home in finished_matches:
@@ -115,7 +106,6 @@ def process_and_update():
                         score_found = finished_matches[key_away]
                         
                     if score_found:
-                        # Update Score column (Column I corresponds to index 8)
                         current_score = str(row.iloc[8]) if pd.notna(row.iloc[8]) else ""
                         if current_score != score_found:
                             df.iat[idx, 8] = score_found
