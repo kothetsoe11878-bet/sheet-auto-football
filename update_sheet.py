@@ -20,7 +20,7 @@ LEAGUES = {
 }
 
 def fetch_api_data(league_id, season=2026):
-    # Fetching finished fixtures (FT) to ensure only authentic data is used for 2026/2027 season
+    # Fetching finished fixtures (FT) for 2026/2027 season (starting year 2026)
     url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}&status=FT"
     response = requests.get(url, headers=BASE_HEADERS)
     if response.status_code != 200:
@@ -32,12 +32,12 @@ def process_and_update():
     if not API_KEY:
         raise ValueError("FOOTBALL_API_KEY environment variable is missing in GitHub Secrets!")
 
-    # Check execution day (Tuesday, Wednesday, Thursday allowed; Tuesday is optimal for weekend results)
+    # Check execution day (Strictly Tuesday to align with GitHub Actions schedule)
     current_day = datetime.now().strftime('%A')
     print(f"Current execution day: {current_day}")
     
-    if current_day not in ['Tuesday', 'Wednesday', 'Thursday']:
-        print("Today is not an update day (Tuesday/Wednesday/Thursday). Skipping scheduled update.")
+    if current_day != 'Tuesday':
+        print("Today is not Tuesday. Skipping scheduled update.")
         return
 
     for league_name, info in LEAGUES.items():
