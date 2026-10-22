@@ -30,13 +30,13 @@ def fetch_fixtures_robust(league_id, season=2026):
             print(f"Successfully fetched {len(data)} fixtures for League {league_id} using season {season}")
             return data
 
-    # 2nd Attempt: Fallback using recent date range WITH season parameter included
-    print(f"Season query returned 0, trying date range fallback with season for League {league_id}...")
+    # 2nd Attempt: Fallback using recent date range ONLY (without season parameter to avoid API conflict)
+    print(f"Season query returned 0, trying date range fallback (date-only) for League {league_id}...")
     today = datetime.now()
     from_date = (today - timedelta(days=14)).strftime('%Y-%m-%d')
     to_date = (today + timedelta(days=7)).strftime('%Y-%m-%d')
     
-    fallback_url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}&from={from_date}&to={to_date}"
+    fallback_url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&from={from_date}&to={to_date}"
     response = requests.get(fallback_url, headers=BASE_HEADERS)
     
     if response.status_code == 200:
