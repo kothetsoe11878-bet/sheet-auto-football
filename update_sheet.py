@@ -1,7 +1,7 @@
 import os
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # API Configuration from GitHub Secrets
 API_KEY = os.environ.get("FOOTBALL_API_KEY")
@@ -19,19 +19,33 @@ LEAGUES = {
     "Ligue1": {"id": 61, "file": "Ligue1_auto_sheet.xlsx"}
 }
 
-def fetch_all_fixtures(league_id, season=2026):
-    # Fetch all fixtures for the season and filter locally for maximum reliability
+def fetch_fixtures_robust(league_id, season=2026):
+    # 1st Attempt: Fetch by Season
     url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}"
     response = requests.get(url, headers=BASE_HEADERS)
-    print(f"API Response Code for League {league_id}: {response.status_code}")
     
-    if response.status_code != 200:
-        print(f"API Error for league {league_id}: {response.text}")
-        return []
+    if response.status_code == 200:
+        data = response.json().get('response', [])
+        if len(data) > 0:
+            print(f"Successfully fetched {len(data)} fixtures for League {league_id} using season {season}")
+            return data
+
+    # 2nd Attempt: Fallback using recent date range (Last 14 days to Next 7 days) if season returns 0
+    print(f"Season query returned 0, trying date range fallback for League {league_id}...")
+    today = datetime.now()
+    from_date = (today - timedelta(days=14)).strftime('%Y-%m-%d')
+    to_date = (today + timedelta(days=7)).strftime('%Y-%m-%d')
     
-    data = response.json().get('response', [])
-    print(f"Total fixtures fetched for League {league_id}: {len(data)}")
-    return data
+    fallback_url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&from={from_date}&to={to_date}"
+    response = requests.get(fallback_url, headers=BASE_HEADERS)
+    
+    if response.status_code == 200:
+        data = response.json().get('response', [])
+        print(f"Fallback fetched {len(data)} fixtures for League {league_id} from {from_date} to {to_date}")
+        return data
+
+    print(f"API Error for league {league_id}: {response.text}")
+    return []
 
 def process_and_update():
     if not API_KEY:
@@ -53,7 +67,7 @@ def process_and_update():
             print(f"Warning: File {file_path} not found in repository. Skipping...")
             continue
             
-        fixtures = fetch_all_fixtures(info["id"])
+        fixtures = fetch_fixtures_robust(info["id"])
         if not fixtures:
             print(f"No fixtures found for {league_name}.")
             continue
