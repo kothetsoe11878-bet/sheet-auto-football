@@ -19,8 +19,9 @@ LEAGUES = {
     "Ligue1": {"id": 61, "file": "Ligue1_auto_sheet.xlsx"}
 }
 
-def fetch_api_data(league_id, season=2026):
-    url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}&status=FT"
+def fetch_all_fixtures(league_id, season=2026):
+    # Fetch all fixtures for the season and filter locally for maximum reliability
+    url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}"
     response = requests.get(url, headers=BASE_HEADERS)
     print(f"API Response Code for League {league_id}: {response.status_code}")
     
@@ -29,11 +30,7 @@ def fetch_api_data(league_id, season=2026):
         return []
     
     data = response.json().get('response', [])
-    print(f"Total FT fixtures fetched for League {league_id}: {len(data)}")
-    if len(data) > 0:
-        # Sample check of the first match
-        print(f"Sample match: {data[0]['fixture']['date']} | {data[0]['teams']['home']['name']} vs {data[0]['teams']['away']['name']}")
-        
+    print(f"Total fixtures fetched for League {league_id}: {len(data)}")
     return data
 
 def process_and_update():
@@ -56,25 +53,28 @@ def process_and_update():
             print(f"Warning: File {file_path} not found in repository. Skipping...")
             continue
             
-        fixtures = fetch_api_data(info["id"])
+        fixtures = fetch_all_fixtures(info["id"])
         if not fixtures:
-            print(f"No completed fixtures found for {league_name}. Holding / Pending (No Fake data).")
+            print(f"No fixtures found for {league_name}.")
             continue
             
-        # Parse API fixtures into a lookup dictionary
+        # Parse and filter only finished (FT) matches locally
         finished_matches = {}
         for fix in fixtures:
-            match_date = fix['fixture']['date'][:10] # YYYY-MM-DD
-            home = fix['teams']['home']['name'].strip().lower()
-            away = fix['teams']['away']['name'].strip().lower()
-            h_goals = fix['goals']['home']
-            a_goals = fix['goals']['away']
-            
-            if h_goals is not None and a_goals is not None:
-                finished_matches[(match_date, home, away)] = f"{h_goals}-{a_goals}"
+            status_short = fix.get('fixture', {}).get('status', {}).get('short')
+            if status_short == 'FT':
+                match_date = fix['fixture']['date'][:10] # YYYY-MM-DD
+                home = fix['teams']['home']['name'].strip().lower()
+                away = fix['teams']['away']['name'].strip().lower()
+                h_goals = fix['goals']['home']
+                a_goals = fix['goals']['away']
+                
+                if h_goals is not None and a_goals is not None:
+                    finished_matches[(match_date, home, away)] = f"{h_goals}-{a_goals}"
 
+        print(f"Total verified FT matches for {league_name}: {len(finished_matches)}")
         if not finished_matches:
-            print(f"No verified FT scores available for {league_name}.")
+            print(f"No verified FT scores available for {league_name}. Holding / Pending.")
             continue
 
         # Read Excel workbook while preserving all sheets and structure
@@ -122,7 +122,7 @@ def process_and_update():
                 df.to_excel(writer, sheet_name=sheet, index=False)
                 
         if updated_any:
-            print(f"Successfully updated {file_path} with verified match scores for {current_day}.")
+            print(f"Successfully updated {file_path} with verified match scores.")
         else:
             print(f"No new matching scores to update for {file_path}.")
 
