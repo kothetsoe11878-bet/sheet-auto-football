@@ -1,7 +1,7 @@
 import os
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # API Configuration from GitHub Secrets
 API_KEY = os.environ.get("FOOTBALL_API_KEY")
@@ -19,29 +19,15 @@ LEAGUES = {
     "Ligue1": {"id": 61, "file": "Ligue1_auto_sheet.xlsx"}
 }
 
-def fetch_fixtures_robust(league_id, season=2026):
-    # 1st Attempt: Fetch by Season
-    url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}"
+def fetch_fixtures_direct(league_id):
+    # Fetch fixtures directly using only league id to bypass parameter conflicts
+    url = f"https://v3.football.api-sports.io/fixtures?league={league_id}"
     response = requests.get(url, headers=BASE_HEADERS)
+    print(f"API Response Code for League {league_id}: {response.status_code}")
     
     if response.status_code == 200:
         data = response.json().get('response', [])
-        if len(data) > 0:
-            print(f"Successfully fetched {len(data)} fixtures for League {league_id} using season {season}")
-            return data
-
-    # 2nd Attempt: Fallback using recent date range ONLY (without season parameter to avoid API conflict)
-    print(f"Season query returned 0, trying date range fallback (date-only) for League {league_id}...")
-    today = datetime.now()
-    from_date = (today - timedelta(days=14)).strftime('%Y-%m-%d')
-    to_date = (today + timedelta(days=7)).strftime('%Y-%m-%d')
-    
-    fallback_url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&from={from_date}&to={to_date}"
-    response = requests.get(fallback_url, headers=BASE_HEADERS)
-    
-    if response.status_code == 200:
-        data = response.json().get('response', [])
-        print(f"Fallback fetched {len(data)} fixtures for League {league_id} from {from_date} to {to_date}")
+        print(f"Successfully fetched {len(data)} total fixtures for League {league_id}")
         return data
 
     print(f"API Error for league {league_id}: {response.text}")
@@ -67,7 +53,7 @@ def process_and_update():
             print(f"Warning: File {file_path} not found in repository. Skipping...")
             continue
             
-        fixtures = fetch_fixtures_robust(info["id"])
+        fixtures = fetch_fixtures_direct(info["id"])
         if not fixtures:
             print(f"No fixtures found for {league_name}.")
             continue
