@@ -19,19 +19,25 @@ LEAGUES = {
     "Ligue1": {"id": 61, "file": "Ligue1_auto_sheet.xlsx"}
 }
 
-def fetch_fixtures_direct(league_id):
-    # Fetch fixtures directly using only league id to bypass parameter conflicts
-    url = f"https://v3.football.api-sports.io/fixtures?league={league_id}"
+def fetch_fixtures_with_season(league_id, season=2026):
+    # Explicitly requesting with season=2026 and printing raw details for debugging
+    url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}"
     response = requests.get(url, headers=BASE_HEADERS)
     print(f"API Response Code for League {league_id}: {response.status_code}")
     
-    if response.status_code == 200:
-        data = response.json().get('response', [])
-        print(f"Successfully fetched {len(data)} total fixtures for League {league_id}")
-        return data
-
-    print(f"API Error for league {league_id}: {response.text}")
-    return []
+    if response.status_code != 200:
+        print(f"API Error for league {league_id}: {response.text}")
+        return []
+    
+    json_data = response.json()
+    data = json_data.get('response', [])
+    print(f"Fetched {len(data)} fixtures for League {league_id} with season {season}")
+    
+    # If 0 fixtures found, let's check what parameters or errors the API might have returned
+    if len(data) == 0:
+        print(f"API Full JSON Output for League {league_id}: {json_data}")
+        
+    return data
 
 def process_and_update():
     if not API_KEY:
@@ -53,7 +59,7 @@ def process_and_update():
             print(f"Warning: File {file_path} not found in repository. Skipping...")
             continue
             
-        fixtures = fetch_fixtures_direct(info["id"])
+        fixtures = fetch_fixtures_with_season(info["id"], season=2026)
         if not fixtures:
             print(f"No fixtures found for {league_name}.")
             continue
