@@ -3,11 +3,10 @@ import requests
 import pandas as pd
 from datetime import datetime
 
-# API Configuration from GitHub Secrets
+# API Configuration from GitHub Secrets (Using correct x-apisports-key header)
 API_KEY = os.environ.get("FOOTBALL_API_KEY")
 BASE_HEADERS = {
-    'x-rapidapi-key': API_KEY,
-    'x-rapidapi-host': 'v3.football.api-sports.io'
+    'x-apisports-key': API_KEY
 }
 
 # League mapping with respective exact Excel filenames in your repository
@@ -20,7 +19,6 @@ LEAGUES = {
 }
 
 def fetch_fixtures_with_season(league_id, season=2026):
-    # Explicitly requesting with season=2026 and printing raw details for debugging
     url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}"
     response = requests.get(url, headers=BASE_HEADERS)
     print(f"API Response Code for League {league_id}: {response.status_code}")
@@ -33,7 +31,6 @@ def fetch_fixtures_with_season(league_id, season=2026):
     data = json_data.get('response', [])
     print(f"Fetched {len(data)} fixtures for League {league_id} with season {season}")
     
-    # If 0 fixtures found, let's check what parameters or errors the API might have returned
     if len(data) == 0:
         print(f"API Full JSON Output for League {league_id}: {json_data}")
         
