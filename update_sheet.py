@@ -20,13 +20,21 @@ LEAGUES = {
 }
 
 def fetch_api_data(league_id, season=2026):
-    # Fetching finished fixtures (FT) to ensure only authentic data is used for 2026/2027 season
     url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}&status=FT"
     response = requests.get(url, headers=BASE_HEADERS)
+    print(f"API Response Code for League {league_id}: {response.status_code}")
+    
     if response.status_code != 200:
         print(f"API Error for league {league_id}: {response.text}")
         return []
-    return response.json().get('response', [])
+    
+    data = response.json().get('response', [])
+    print(f"Total FT fixtures fetched for League {league_id}: {len(data)}")
+    if len(data) > 0:
+        # Sample check of the first match
+        print(f"Sample match: {data[0]['fixture']['date']} | {data[0]['teams']['home']['name']} vs {data[0]['teams']['away']['name']}")
+        
+    return data
 
 def process_and_update():
     if not API_KEY:
